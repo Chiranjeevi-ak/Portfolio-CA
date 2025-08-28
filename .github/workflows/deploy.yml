@@ -22,32 +22,38 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          # if you later commit a package-lock.json, add:
+          # cache: npm
+          # cache-dependency-path: package-lock.json
 
-      - name: Install deps (no lockfile)
-        run: npm install
+      - name: Install deps
+        run: npm ci || npm i
 
       - name: Build
         run: npm run build
 
-      - name: Debug listing
+      - name: Verify dist exists (fail early if missing)
         run: |
-          echo "pwd=$(pwd)"
-          ls -la
-          echo "--- dist ---"
-          ls -la dist || true
+          if [ ! -f dist/index.html ]; then
+            echo "❌ Build did not produce dist/index.html — check Vite errors and working directory"
+            exit 1
+          fi
 
       - name: SPA 404 (optional)
-        run: test -f dist/index.html && cp dist/index.html dist/404.html || true
+        run: cp dist/index.html dist/404.html
 
-      - name: Upload artifact
-        if: ${{ hashFiles('dist/**') != '' }}
+      - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3
         with:
+          # must point to the folder that contains index.html
           path: dist
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
