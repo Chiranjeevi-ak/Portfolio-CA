@@ -1,0 +1,68 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+# If your package.json and index.html are in the root, leave this as "."
+defaults:
+  run:
+    working-directory: .
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install deps
+        run: npm ci || npm i
+
+      - name: Build
+        run: npm run build
+
+      - name: Debug listing
+        run: |
+          echo "PWD=$(pwd)"
+          echo "Root listing:"
+          ls -la
+          echo "dist listing (if any):"
+          ls -la dist || true
+
+      - name: SPA 404 (optional)
+        run: |
+          if [ -f dist/index.html ]; then
+            cp dist/index.html dist/404.html
+          else
+            echo "No dist/index.html yet (build likely failed)"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
