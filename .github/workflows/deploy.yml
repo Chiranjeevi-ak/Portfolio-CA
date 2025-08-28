@@ -19,34 +19,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 🔎 Find the folder that has BOTH package.json and index.html (Vite project root)
+      - name: Detect Vite project directory
+        id: detect
+        run: |
+          set -e
+          # search max 3 levels deep; adjust if needed
+          DIR=$(find . -maxdepth 3 -type f -name index.html -printf '%h\n' | while read d; do
+            if [ -f "$d/package.json" ]; then echo "$d"; fi
+          done | head -n1)
+          if [ -z "$DIR" ]; then
+            echo "❌ Could not find a directory that contains both index.html and package.json"
+            echo "Repository tree:"; ls -la; exit 1
+          fi
+          echo "Found Vite project at: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          # if you later commit a package-lock.json, add:
-          # cache: npm
-          # cache-dependency-path: package-lock.json
 
-      - name: Install deps
+      - name: Install dependencies
+        working-directory: ${{ steps.detect.outputs.dir }}
         run: npm ci || npm i
 
       - name: Build
+        working-directory: ${{ steps.detect.outputs.dir }}
         run: npm run build
 
       - name: Verify dist exists (fail early if missing)
+        working-directory: ${{ steps.detect.outputs.dir }}
         run: |
           if [ ! -f dist/index.html ]; then
-            echo "❌ Build did not produce dist/index.html — check Vite errors and working directory"
+            echo "❌ Build did not produce dist/index.html — check Vite errors & vite.config.*"
+            echo "Listing:"; ls -la; echo "Dist listing:"; ls -la dist || true
             exit 1
           fi
 
       - name: SPA 404 (optional)
+        working-directory: ${{ steps.detect.outputs.dir }}
         run: cp dist/index.html dist/404.html
 
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          # must point to the folder that contains index.html
-          path: dist
+          # path is from repo root
+          path: ${{ steps.detect.outputs.dir }}/dist
 
   deploy:
     needs: build
